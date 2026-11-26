@@ -1,4 +1,4 @@
-// Editor visual v3.1 — modelo, dados e imagens separados.
+// Editor visual v3.2 — modelo, dados e imagens separados.
 const $=id=>document.getElementById(id);
 const prefix='one-piece-rpg.fichas/';
 const groups=[['Identidade',['Nome','Idade','Raça','Classe','Subclasse','Nível','XP','Berries','Recompensa']],['Status',['Vida atual','Vida máxima','Mana atual','Mana máxima','Defesa','Movimentação']],['Atributos',['Força','Destreza','Constituição','Inteligência','Sabedoria','Carisma']],['Habilidades e itens',['Perícias','Habilidades raciais','Habilidades de classe','Akuma no Mi','Haki','Armas','Equipamentos','Inventário','Anotações']]];
@@ -11,12 +11,17 @@ const valueStore='rpg-test-values', modelStore='rpg-test-model', artStore='rpg-t
 let metadata=read(valueStore,{}), art=read(artStore,{}), model=read(modelStore,{image:'',fields:[]});
 let OBR,ready=false,editing=true,selected=null,activeSlot=slot();
 const inputs=new Map(), pending=new Map();let timer, sending=false, inFlight={};
-const kinds=['text','number','area','card'];
+const kinds=['text','number','area','card','counter'];
 const rarities={'Comum':'#a5a5b0','Incomum':'#65c68a','Raro':'#66aaff','Épico':'#b68cff','Lendário':'#e7c17b','Mítico':'#f18b8b'};
 const categories=['Outro','Consumível','Arma','Equipamento','Acessório','Material','Tesouro','Item especial','Missão'];
 const cardDefaults={name:'',qty:'1',rarity:'Comum',category:'Outro',desc:''};
 const defaults={Color:'#ffffff',Size:16,Font:'system-ui',Align:'left',Weight:'normal',Bg:'#ffffff',Opacity:0,Border:0,BorderColor:'#ffffff'};
 const cardStyle={...defaults,Size:13,Bg:'#292235',Opacity:94,Border:1,Rarity:true};
+const counterStyle={...defaults,Size:20,Align:'center',Weight:'bold'};
+const counterDefaults={min:null,max:null,step:1,showName:true,signed:true};
+const safeInt=v=>{if(typeof v!=='number'&&typeof v!=='string')return null;if(!/^[+-]?\d+$/.test(String(v).trim()))return null;const n=Number(v);return Number.isSafeInteger(n)?n:null;};
+function normalizeCounter(c={}){c=c&&typeof c==='object'?c:{};let min=safeInt(c.min),max=safeInt(c.max);if(min!==null&&max!==null&&min>max)throw Error('O mínimo não pode ser maior que o máximo.');const step=safeInt(c.step);return {min,max,step:step!==null&&step>0?step:1,showName:c.showName!==false,signed:c.signed!==false};}
+const counterOf=f=>normalizeCounter(f.counter);
 const fieldKey=f=>'visual/'+f.id;
 const cardKey=(f,p)=>fieldKey(f)+'/card/'+p;
 const imageOK=v=>typeof v==='string'&&/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v);
@@ -24,7 +29,7 @@ const uid=()=>crypto.randomUUID();
 function normalizeModel(m){
  if(!m||!Array.isArray(m.fields)||!(m.image===''||imageOK(m.image)))throw Error('Modelo inválido');
  const ids=new Set();
- const fields=m.fields.map(f=>{if(!f||typeof f.id!=='string'||!f.id||typeof f.name!=='string'||!kinds.includes(f.kind)||!['x','y','w','h'].every(k=>Number.isFinite(f[k])))throw Error('Campo inválido');if(ids.has(f.id))throw Error('IDs duplicados no modelo');ids.add(f.id);const w=Math.max(4,Math.min(100,f.w)),h=Math.max(3,Math.min(100,f.h));return {id:f.id,name:f.name,kind:f.kind,x:Math.max(0,Math.min(100-w,f.x)),y:Math.max(0,Math.min(100-h,f.y)),w,h,style:f.style&&typeof f.style==='object'?f.style:{},legacyName:typeof f.legacyName==='string'?f.legacyName:(!m.version&&f.kind!=='card'?f.name:undefined)};});
+ const fields=m.fields.map(f=>{if(!f||typeof f.id!=='string'||!f.id||typeof f.name!=='string'||!kinds.includes(f.kind)||!['x','y','w','h'].every(k=>Number.isFinite(f[k])))throw Error('Campo inválido');if(ids.has(f.id))throw Error('IDs duplicados no modelo');ids.add(f.id);const w=Math.max(4,Math.min(100,f.w)),h=Math.max(3,Math.min(100,f.h));return {id:f.id,name:f.name,kind:f.kind,x:Math.max(0,Math.min(100-w,f.x)),y:Math.max(0,Math.min(100-h,f.y)),w,h,style:f.style&&typeof f.style==='object'?f.style:{},...(f.kind==='counter'?{counter:normalizeCounter(f.counter)}:{}),legacyName:typeof f.legacyName==='string'?f.legacyName:(!m.version&&f.kind!=='card'?f.name:undefined)};});
  return {version:3,image:m.image,fields};
 }
 try{model=normalizeModel(model);}catch{model={version:3,image:'',fields:[]};status('Modelo local inválido. Importe um backup.');}
@@ -52,8 +57,8 @@ function download(data,name){const u=URL.createObjectURL(new Blob([JSON.stringif
 function commitFocus(){if(document.activeElement instanceof HTMLElement)document.activeElement.blur();if(ready)void flush();}
 for(const [title,fields] of groups){const h=element('h3','',title);$('fields').append(h);const box=element('div',title!=='Habilidades e itens'?'grid':'');for(const field of fields){const label=element('label','',field);const el=element(title==='Habilidades e itens'?'textarea':'input');label.append(el);box.append(label);inputs.set(field,el);el.oninput=()=>save(activeSlot,field,el.value);el.onchange=()=>save(activeSlot,field,el.value,true);} $('fields').append(box);}
 function renderClassic(force=false){for(const [f,e] of inputs)if(force||e!==document.activeElement)e.value=value(activeSlot,f);}
-function styleOf(f){return {...(f.kind==='card'?cardStyle:defaults),...f.style};}
-function syncStyle(){const f=model.fields.find(f=>f.id===selected);$('stylepanel').hidden=!editing||!f;if(!f)return;const s=styleOf(f);for(const k of Object.keys(defaults))$('st'+k).value=s[k];$('rename').value=f.name;$('rarityStyle').hidden=f.kind!=='card';$('stRarity').checked=!!s.Rarity;}
+function styleOf(f){return {...(f.kind==='card'?cardStyle:f.kind==='counter'?counterStyle:defaults),...f.style};}
+function syncStyle(){const f=model.fields.find(f=>f.id===selected);$('stylepanel').hidden=!editing||!f;if(!f)return;const s=styleOf(f);for(const k of Object.keys(defaults))$('st'+k).value=s[k];$('rename').value=f.name;$('rarityStyle').hidden=f.kind!=='card';$('stRarity').checked=!!s.Rarity;$('counterSettings').hidden=f.kind!=='counter';if(f.kind==='counter'){const c=counterOf(f);$('ctMin').value=c.min??'';$('ctMax').value=c.max??'';$('ctStep').value=c.step;$('ctName').checked=c.showName;$('ctSigned').checked=c.signed;}}
 const hex=v=>/^#[0-9a-f]{6}$/i.test(v)?v:'#ffffff';
 const num=(v,a,b)=>Math.max(a,Math.min(b,Number(v)||0));
 function applyStyle(el,f){const s=styleOf(f),alpha=Math.round(num(s.Opacity,0,100)*255/100).toString(16).padStart(2,'0');Object.assign(el.style,{color:hex(s.Color),fontSize:num(s.Size,8,96)+'px',fontFamily:s.Font,textAlign:s.Align,fontWeight:s.Weight==='bold'?'bold':'normal',fontStyle:s.Weight==='italic'?'italic':'normal',backgroundColor:hex(s.Bg)+alpha,border:num(s.Border,0,2)+'px solid '+hex(s.BorderColor)});}
@@ -66,10 +71,12 @@ function refreshCard(box,f,s){
  const sel=box.querySelector('[data-card-prop="rarity"]');if(sel)sel.style.color=color;
  const src=cardImage(s,f),img=box.querySelector('img'),wrap=box.querySelector('.item-art');img.hidden=!src;if(src){if(img.getAttribute('src')!==src)img.src=src;}else img.removeAttribute('src');wrap.classList.toggle('has-art',!!src);wrap.querySelector('.art-placeholder').hidden=!!src;
 }
-function refreshValues(){for(const d of $('overlays').children){const f=model.fields.find(x=>x.id===d.dataset.id);if(!f)continue;if(f.kind==='card'){const box=d.querySelector('.itemcard');if(box)refreshCard(box,f,activeSlot);}else{const e=d.querySelector('.field-value');if(e&&e!==document.activeElement)e.value=value(activeSlot,fieldKey(f))||(editing?f.name:'');}}}
-function changeStyle(k,v){const f=model.fields.find(f=>f.id===selected);if(!f)return;f.style={...styleOf(f),[k]:v};persistModel();const d=[...$('overlays').children].find(x=>x.dataset.id===f.id),e=d?.querySelector('.field-value,.itemcard');if(e){applyStyle(e,f);if(f.kind==='card')refreshCard(e,f,activeSlot);}}
+function refreshValues(){for(const d of $('overlays').children){const f=model.fields.find(x=>x.id===d.dataset.id);if(!f)continue;if(f.kind==='card'){const box=d.querySelector('.itemcard');if(box)refreshCard(box,f,activeSlot);}else if(f.kind==='counter'){const box=d.querySelector('.counter');if(box)refreshCounter(box,f,activeSlot);}else{const e=d.querySelector('.field-value');if(e&&e!==document.activeElement)e.value=value(activeSlot,fieldKey(f))||(editing?f.name:'');}}}
+function changeStyle(k,v){const f=model.fields.find(f=>f.id===selected);if(!f)return;f.style={...styleOf(f),[k]:v};persistModel();const d=[...$('overlays').children].find(x=>x.dataset.id===f.id),e=d?.querySelector('.field-value,.itemcard,.counter');if(e){applyStyle(e,f);if(f.kind==='card')refreshCard(e,f,activeSlot);}}
 for(const k of Object.keys(defaults))$('st'+k).oninput=()=>changeStyle(k,$('st'+k).value);
 $('stRarity').onchange=()=>changeStyle('Rarity',$('stRarity').checked);
+function updateCounterSettings(){const f=model.fields.find(f=>f.id===selected);if(!f||f.kind!=='counter')return;try{const min=$('ctMin').value,max=$('ctMax').value,step=$('ctStep').value;for(const [raw,label] of [[min,'Mínimo'],[max,'Máximo'],[step,'Passo']])if(raw!==''&&safeInt(raw)===null)throw Error(label+' deve ser um número inteiro válido.');if(safeInt(step)===null||safeInt(step)<=0)throw Error('O passo deve ser um inteiro positivo.');f.counter=normalizeCounter({min,max,step,showName:$('ctName').checked,signed:$('ctSigned').checked});persistModel();draw();}catch(e){status(e.message);syncStyle();}}
+for(const id of ['ctMin','ctMax','ctStep','ctName','ctSigned'])$(id).onchange=updateCounterSettings;
 $('rename').onchange=()=>{const f=model.fields.find(f=>f.id===selected);if(f&&$('rename').value.trim()){f.name=$('rename').value.trim();persistModel();draw();}};
 async function imageData(file,max,quality){if(!file)throw Error('Selecione uma imagem');const bmp=await createImageBitmap(file);try{const c=element('canvas'),scale=Math.min(1,max/Math.max(bmp.width,bmp.height));c.width=Math.max(1,Math.round(bmp.width*scale));c.height=Math.max(1,Math.round(bmp.height*scale));c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);const data=c.toDataURL('image/webp',quality);if(!imageOK(data))throw Error('Não foi possível converter');return data;}finally{bmp.close();}}
 function makeCard(f,s,preview){
@@ -89,11 +96,20 @@ function makeCard(f,s,preview){
  button(row,'Limpar',()=>{if(!confirm('Limpar este item somente deste personagem?'))return;const patch={};for(const [p,v] of Object.entries(cardDefaults))patch[key(s,cardKey(f,p))]=v;patchValues(patch,{immediate:true});delete art[key(s,fieldKey(f))];store(artStore,art);refreshCard(box,f,s);},'Limpar item','clear-item');
  control(box,'desc','Descrição, efeitos e observações','area');refreshCard(box,f,s);return box;
 }
+function clampCounter(n,c){return Math.max(c.min??Number.MIN_SAFE_INTEGER,Math.min(c.max??Number.MAX_SAFE_INTEGER,n));}
+function counterValue(s,f){const c=counterOf(f);return safeInt(value(s,fieldKey(f)))??clampCounter(0,c);}
+function formatCounter(n,c){return c.signed&&n>0?'+'+n:String(n);}
+function refreshCounter(box,f,s,force=false){const c=counterOf(f),n=counterValue(s,f),input=box.querySelector('.counter-value');if(force||input!==document.activeElement)input.value=formatCounter(n,c);box.querySelector('.counter-minus').disabled=box.dataset.preview==='true'||n<=(c.min??Number.MIN_SAFE_INTEGER);box.querySelector('.counter-plus').disabled=box.dataset.preview==='true'||n>=(c.max??Number.MAX_SAFE_INTEGER);}
+function makeCounter(f,s,preview){const c=counterOf(f),box=element('div','counter');box.dataset.preview=String(preview);applyStyle(box,f);if(c.showName)box.append(element('div','counter-name',f.name));const row=element('div','counter-row');box.append(row);
+ const minus=element('button','counter-minus','−'),plus=element('button','counter-plus','+'),input=element('input','counter-value');input.type='text';input.inputMode='text';input.autocomplete='off';input.spellcheck=false;input.setAttribute('aria-label',f.name);input.readOnly=preview;if(preview)input.tabIndex=-1;for(const [b,label] of [[minus,'Diminuir'],[plus,'Aumentar']]){b.type='button';b.title=label+' '+f.name;b.setAttribute('aria-label',b.title);}
+ function commit(){const n=safeInt(input.value);if(n!==null)save(s,fieldKey(f),String(clampCounter(n,c)),true);refreshCounter(box,f,s,true);}
+ if(!preview){input.oninput=()=>{const n=safeInt(input.value);if(n!==null&&n===clampCounter(n,c)){save(s,fieldKey(f),String(n));refreshCounter(box,f,s);}};input.onblur=commit;input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();input.blur();}};const adjust=delta=>{const n=counterValue(s,f),next=clampCounter(n+delta*c.step,c);save(s,fieldKey(f),String(next),true);refreshCounter(box,f,s,true);};minus.onclick=()=>adjust(-1);plus.onclick=()=>adjust(1);}
+ row.append(minus,input,plus);refreshCounter(box,f,s,true);return box;}
 function draw(){
  syncStyle();const bg=$('bg');bg.hidden=!model.image;if(model.image&&bg.getAttribute('src')!==model.image)bg.src=model.image;else if(!model.image)bg.removeAttribute('src');$('overlays').replaceChildren();if(!model.image)return;
  const s=activeSlot;
  for(const f of model.fields){const d=element('div','overlay'+(editing?' edit':'')+(editing&&selected===f.id?' selected':''));d.dataset.id=f.id;const place=()=>Object.assign(d.style,{left:f.x+'%',top:f.y+'%',width:f.w+'%',height:f.h+'%'});place();
- if(f.kind==='card')d.append(makeCard(f,s,editing));else{const e=element(f.kind==='area'?'textarea':'input','field-value');if(f.kind==='number'&&!editing){e.type='number';e.step='any';}e.setAttribute('aria-label',f.name);e.value=value(s,fieldKey(f))||(editing?f.name:'');e.readOnly=editing;if(editing)e.tabIndex=-1;else{e.oninput=()=>save(s,fieldKey(f),e.value);e.onchange=()=>save(s,fieldKey(f),e.value,true);}applyStyle(e,f);d.append(e);}
+ if(f.kind==='card')d.append(makeCard(f,s,editing));else if(f.kind==='counter')d.append(makeCounter(f,s,editing));else{const e=element(f.kind==='area'?'textarea':'input','field-value');if(f.kind==='number'&&!editing){e.type='number';e.step='any';}e.setAttribute('aria-label',f.name);e.value=value(s,fieldKey(f))||(editing?f.name:'');e.readOnly=editing;if(editing)e.tabIndex=-1;else{e.oninput=()=>save(s,fieldKey(f),e.value);e.onchange=()=>save(s,fieldKey(f),e.value,true);}applyStyle(e,f);d.append(e);}
  if(editing){d.append(element('span','edit-label',f.name));const handle=element('div','handle');d.append(handle);d.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();selected=f.id;syncStyle();for(const n of $('overlays').children)n.classList.toggle('selected',n===d);const r=$('stage').getBoundingClientRect(),sx=e.clientX,sy=e.clientY,orig={...f},resize=e.target===handle;if(!r.width||!r.height)return;d.setPointerCapture(e.pointerId);d.onpointermove=m=>{const dx=(m.clientX-sx)/r.width*100,dy=(m.clientY-sy)/r.height*100;if(resize){f.w=Math.max(4,Math.min(100-f.x,orig.w+dx));f.h=Math.max(3,Math.min(100-f.y,orig.h+dy));}else{f.x=Math.max(0,Math.min(100-f.w,orig.x+dx));f.y=Math.max(0,Math.min(100-f.h,orig.y+dy));}place();};d.onpointerup=d.onpointercancel=()=>{d.onpointermove=null;persistModel();};};}
  $('overlays').append(d);
  }
@@ -102,7 +118,7 @@ $('sheet').onchange=()=>{commitFocus();activeSlot=slot();renderClassic(true);dra
 $('toggle').onclick=()=>{commitFocus();const v=$('visual').hidden;$('visual').hidden=!v;$('classic').hidden=v;$('toggle').textContent=v?'Ficha clássica':'Modelo visual';draw();};
 $('mode').onclick=()=>{commitFocus();editing=!editing;$('mode').textContent=editing?'Modo jogador':'Editar modelo';$('editor').hidden=!editing;draw();};
 $('image').onclick=()=>$('imagefile').click();$('imagefile').onchange=async()=>{const f=$('imagefile').files[0];$('imagefile').value='';if(!f)return;try{model.image=await imageData(f,1800,.85);const ok=persistModel();draw();if(ok)status('Imagem importada. Adicione campos.');}catch(e){status('Imagem inválida: '+e.message);}};
-$('add').onclick=()=>{if(!model.image)return status('Importe uma imagem primeiro.');const name=$('name').value.trim();if(!name)return status('Digite o nome do campo.');const kind=$('kind').value;const f={id:uid(),name,kind,x:5,y:5,w:kind==='card'?55:35,h:kind==='card'?32:8,style:{}};model.fields.push(f);selected=f.id;persistModel();draw();};
+$('add').onclick=()=>{if(!model.image)return status('Importe uma imagem primeiro.');const name=$('name').value.trim();if(!name)return status('Digite o nome do campo.');const kind=$('kind').value;const f={id:uid(),name,kind,x:5,y:5,w:kind==='card'?55:kind==='counter'?25:35,h:kind==='card'?32:kind==='counter'?12:8,style:{},...(kind==='counter'?{counter:{...counterDefaults}}:{})};model.fields.push(f);selected=f.id;persistModel();draw();};
 $('remove').onclick=()=>{const f=model.fields.find(f=>f.id===selected);if(!f)return;if(!confirm('Excluir o campo "'+f.name+'" do modelo? Os valores antigos permanecerão no backup.'))return;model.fields=model.fields.filter(x=>x.id!==selected);selected=null;persistModel();draw();};
 $('export').onclick=()=>{commitFocus();download(Object.fromEntries([...inputs.keys()].map(f=>[f,value(activeSlot,f)])),'ficha-'+activeSlot+'.json');};
 $('import').onclick=()=>$('file').click();$('file').onchange=async()=>{const f=$('file').files[0],s=activeSlot;$('file').value='';if(!f)return;try{const data=JSON.parse(await f.text()),patch={};for(const name of inputs.keys())if(['string','number'].includes(typeof data[name]))patch[key(s,name)]=String(data[name]);patchValues(patch,{immediate:true});renderClassic(true);refreshValues();status('Ficha clássica importada.');}catch(e){status('Falha na importação: '+e.message);}};

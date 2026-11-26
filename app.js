@@ -24,7 +24,8 @@ function normalizeCounter(c={}){c=c&&typeof c==='object'?c:{};let min=safeInt(c.
 const counterOf=f=>normalizeCounter(f.counter);
 const fieldKey=f=>'visual/'+f.id;
 const cardKey=(f,p)=>fieldKey(f)+'/card/'+p;
-const imageOK=v=>typeof v==='string'&&/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v);
+const hostedImage='https://borbaberetae-pixel.github.io/one-piece-editor/a_highly_detailed_clean_graphic_design_of_a_blank_1.png';
+const imageOK=v=>typeof v==='string'&&(v===hostedImage||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v));
 const uid=()=>crypto.randomUUID();
 function normalizeModel(m){
  if(!m||!Array.isArray(m.fields)||!(m.image===''||imageOK(m.image)))throw Error('Modelo inválido');
@@ -155,7 +156,7 @@ $('publish').onclick=async()=>{
  if(!model.image||!model.fields.length)return status('Importe uma imagem e crie campos primeiro.');
  if(window.parent!==window&&!ready)return status('Aguarde a conexão com a sala.');
  if(!confirm('Publicar este layout? Os valores dos personagens não serão substituídos.'))return;
- const payload={revision:uid(),model:normalizeModel(model)};
+ const payload={revision:uid(),model:normalizeModel({...model,image:hostedImage})};
  $('publish').disabled=true;
  try{if(ready){if(await OBR.player.getRole()!=='GM')throw Error('Somente o mestre pode publicar.');await OBR.room.setMetadata({[publicationKey]:payload});}else{if(!store('rpg-test-publication',payload))throw Error('Armazenamento cheio');}receivePublication(payload);status(ready?'Modelo publicado na sala.':'Modelo publicado apenas neste navegador (teste local).');}catch(e){status('Falha na publicação: '+e.message+' — tente uma imagem menor.');}finally{publicationUI();}
 };

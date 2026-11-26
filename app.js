@@ -1,4 +1,4 @@
-// Editor visual v3.3 — modelo, dados e imagens separados.
+import SDK from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';// Editor visual v3.3 — modelo, dados e imagens separados.
 const $=id=>document.getElementById(id);
 const prefix='one-piece-rpg.fichas/';
 const groups=[['Identidade',['Nome','Idade','Raça','Classe','Subclasse','Nível','XP','Berries','Recompensa']],['Status',['Vida atual','Vida máxima','Mana atual','Mana máxima','Defesa','Movimentação']],['Atributos',['Força','Destreza','Constituição','Inteligência','Sabedoria','Carisma']],['Habilidades e itens',['Perícias','Habilidades raciais','Habilidades de classe','Akuma no Mi','Haki','Armas','Equipamentos','Inventário','Anotações']]];
@@ -178,8 +178,7 @@ async function conectarSala() {
   status('Carregando SDK do Owlbear...');
 
   try {
-    OBR = (await import('https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm')).default;
-
+ OBR = SDK;
     status('SDK carregado. Aguardando sala...');
 
     const timeout = setTimeout(() => {

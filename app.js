@@ -1,4 +1,4 @@
-// Editor visual v3.2 — modelo, dados e imagens separados.
+// Editor visual v3.3 — modelo, dados e imagens separados.
 const $=id=>document.getElementById(id);
 const prefix='one-piece-rpg.fichas/';
 const groups=[['Identidade',['Nome','Idade','Raça','Classe','Subclasse','Nível','XP','Berries','Recompensa']],['Status',['Vida atual','Vida máxima','Mana atual','Mana máxima','Defesa','Movimentação']],['Atributos',['Força','Destreza','Constituição','Inteligência','Sabedoria','Carisma']],['Habilidades e itens',['Perícias','Habilidades raciais','Habilidades de classe','Akuma no Mi','Haki','Armas','Equipamentos','Inventário','Anotações']]];
@@ -33,7 +33,7 @@ function normalizeModel(m){
  return {version:3,image:m.image,fields};
 }
 try{model=normalizeModel(model);}catch{model={version:3,image:'',fields:[]};status('Modelo local inválido. Importe um backup.');}
-function persistModel(){return store(modelStore,model);}
+function persistModel(){if(officialView)return true;return store(modelStore,model);}
 function patchValues(patch,{immediate=false}={}){
  Object.assign(metadata,patch);
  if(!ready){store(valueStore,metadata);return;}
@@ -126,7 +126,42 @@ $('modelExport').onclick=()=>{commitFocus();download(model,'modelo-visual.json')
 $('modelImport').onclick=()=>$('modelFile').click();$('modelFile').onchange=async()=>{const f=$('modelFile').files[0];$('modelFile').value='';if(!f)return;try{const m=normalizeModel(JSON.parse(await f.text()));if(model.fields.length&&!confirm('Substituir o layout? Os valores antigos permanecem guardados pelos IDs.'))return;model=m;selected=null;migrate();persistModel();draw();status('Modelo importado.');}catch(e){status('Falha: '+e.message);}};
 $('backupExport').onclick=()=>{commitFocus();const values=Object.fromEntries(Object.entries(metadata).filter(([k])=>k.startsWith(prefix)));download({format:'one-piece-editor-backup',version:3,model,values,art},'backup-editor-visual.json');};
 $('backupImport').onclick=()=>$('backupFile').click();$('backupFile').onchange=async()=>{const f=$('backupFile').files[0];$('backupFile').value='';if(!f)return;try{const b=JSON.parse(await f.text());if(b.format!=='one-piece-editor-backup')throw Error('Arquivo não é um backup completo');const m=normalizeModel(b.model),p={},a={};for(const [k,v] of Object.entries(b.values||{}))if(k.startsWith(prefix)&&['string','number'].includes(typeof v))p[k]=String(v);for(const [k,v] of Object.entries(b.art||{}))if(k.startsWith(prefix)&&imageOK(v))a[k]=v;if(!confirm('Restaurar layout e os dados das duas fichas deste backup? Valores correspondentes serão substituídos.'))return;model=m;selected=null;Object.assign(art,a);store(artStore,art);patchValues(p,{immediate:true});migrate();persistModel();renderClassic(true);draw();status('Backup restaurado.');}catch(e){status('Falha: '+e.message);}};
+// Publicação experimental: um único registro, separado dos valores.
+const publicationKey='one-piece-editor.publication/v1';
+let officialView=false, draftModel=null, published=null, role=null, publicationRevision=null;
+function publicationUI(){
+ $('publish').disabled=officialView||(ready&&role!=='GM');
+ $('draft').hidden=!officialView|| (ready&&role!=='GM');
+ $('official').hidden=officialView;
+ $('mode').hidden=officialView||(ready&&role!=='GM');
+ $('image').hidden=officialView||(ready&&role!=='GM');
+ $('modelImport').hidden=officialView||(ready&&role!=='GM');
+ $('backupImport').hidden=officialView||(ready&&role!=='GM');
+ $('toggle').hidden=officialView||(ready&&role!=='GM');
+}
+function showOfficial(){
+ if(!published){status('Nenhum modelo publicado nesta sala.');return;}
+ commitFocus();if(!officialView)draftModel=model;
+ officialView=true;model=normalizeModel(published.model);selected=null;editing=false;
+ $('visual').hidden=false;$('classic').hidden=true;$('editor').hidden=true;$('toggle').textContent='Ficha clássica';
+ publicationUI();draw();status('Ficha oficial aberta.');
+}
+function receivePublication(raw){
+ if(!raw||typeof raw.revision!=='string'||raw.revision===publicationRevision)return;
+ try{const m=normalizeModel(raw.model);if(!m.image)throw Error('Sem imagem');published={revision:raw.revision,model:m};publicationRevision=raw.revision;if(officialView||(ready&&role!=='GM'))showOfficial();}catch(e){status('Modelo publicado inválido: '+e.message);}
+}
+$('publish').onclick=async()=>{
+ if(officialView||(ready&&role!=='GM'))return;
+ if(!model.image||!model.fields.length)return status('Importe uma imagem e crie campos primeiro.');
+ if(window.parent!==window&&!ready)return status('Aguarde a conexão com a sala.');
+ if(!confirm('Publicar este layout? Os valores dos personagens não serão substituídos.'))return;
+ const payload={revision:uid(),model:normalizeModel(model)};
+ $('publish').disabled=true;
+ try{if(ready){if(await OBR.player.getRole()!=='GM')throw Error('Somente o mestre pode publicar.');await OBR.room.setMetadata({[publicationKey]:payload});}else{if(!store('rpg-test-publication',payload))throw Error('Armazenamento cheio');}receivePublication(payload);status(ready?'Modelo publicado na sala.':'Modelo publicado apenas neste navegador (teste local).');}catch(e){status('Falha na publicação: '+e.message+' — tente uma imagem menor.');}finally{publicationUI();}
+};
+$('official').onclick=showOfficial;
+$('draft').onclick=()=>{if(ready&&role!=='GM')return;commitFocus();model=draftModel;draftModel=null;officialView=false;editing=true;selected=null;$('editor').hidden=false;$('mode').textContent='Modo jogador';publicationUI();draw();status('Rascunho aberto.');};
 // Inicialização local não depende da rede. O SDK só é carregado dentro de iframe.
-migrate();persistModel();renderClassic(true);draw();
-if(window.parent!==window){(async()=>{try{OBR=(await import('https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm')).default;OBR.onReady(async()=>{try{metadata=await OBR.room.getMetadata();ready=true;OBR.room.onMetadataChange(m=>{metadata={...m,...inFlight,...Object.fromEntries(pending)};renderClassic();refreshValues();});migrate();renderClassic(true);refreshValues();status('Conectado à sala. Modelo e imagens são locais.');}catch(e){status('Falha na conexão: '+e.message);}});}catch(e){status('SDK indisponível. Modo local.');}})();}
+migrate();persistModel();renderClassic(true);draw();publicationUI();if(window.parent===window)receivePublication(read('rpg-test-publication',null));
+if(window.parent!==window){(async()=>{try{OBR=(await import('https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm')).default;OBR.onReady(async()=>{try{metadata=await OBR.room.getMetadata();role=await OBR.player.getRole();ready=true;publicationUI();if(role!=='GM'){$('visual').hidden=false;$('classic').hidden=true;$('editor').hidden=true;editing=false;model={version:3,image:'',fields:[]};draw();}receivePublication(metadata[publicationKey]);OBR.room.onMetadataChange(m=>{metadata={...m,...inFlight,...Object.fromEntries(pending)};renderClassic();refreshValues();receivePublication(m[publicationKey]);});if(role==='GM')migrate();renderClassic(true);refreshValues();status(role==='GM'?'Conectado como mestre.':'Conectado como jogador. '+(published?'Ficha oficial disponível.':'Aguardando publicação.'));}catch(e){status('Falha na conexão: '+e.message);}});}catch(e){status('SDK indisponível. Modo local.');}})();}
 window.addEventListener('pagehide',()=>{if(ready)void flush();});

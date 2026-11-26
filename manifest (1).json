@@ -1,0 +1,15 @@
+{
+  "name": "One Piece RPG - Editor Visual",
+  "version": "3.3.0",
+  "manifest_version": 1,
+  "description": "Editor de modelos visuais e publicação de fichas RPG",
+  "author": "One Piece RPG",
+  "icon": "https://borbaberetae-pixel.github.io/one-piece-rpg/icon.svg",
+  "action": {
+    "title": "Editor Visual RPG",
+    "icon": "https://borbaberetae-pixel.github.io/one-piece-rpg/icon.svg",
+    "popover": "https://borbaberetae-pixel.github.io/one-piece-editor/index.html?v=33",
+    "height": 650,
+    "width": 800
+  }
+}

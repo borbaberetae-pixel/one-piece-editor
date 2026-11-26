@@ -161,7 +161,83 @@ $('publish').onclick=async()=>{
 };
 $('official').onclick=showOfficial;
 $('draft').onclick=()=>{if(ready&&role!=='GM')return;commitFocus();model=draftModel;draftModel=null;officialView=false;editing=true;selected=null;$('editor').hidden=false;$('mode').textContent='Modo jogador';publicationUI();draw();status('Rascunho aberto.');};
-// Inicialização local não depende da rede. O SDK só é carregado dentro de iframe.
-migrate();persistModel();renderClassic(true);draw();publicationUI();if(window.parent===window)receivePublication(read('rpg-test-publication',null));
-if(window.parent!==window){(async()=>{try{OBR=(await import('https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm')).default;OBR.onReady(async()=>{try{metadata=await OBR.room.getMetadata();role=await OBR.player.getRole();ready=true;publicationUI();if(role!=='GM'){$('visual').hidden=false;$('classic').hidden=true;$('editor').hidden=true;editing=false;model={version:3,image:'',fields:[]};draw();}receivePublication(metadata[publicationKey]);OBR.room.onMetadataChange(m=>{metadata={...m,...inFlight,...Object.fromEntries(pending)};renderClassic();refreshValues();receivePublication(m[publicationKey]);});if(role==='GM')migrate();renderClassic(true);refreshValues();status(role==='GM'?'Conectado como mestre.':'Conectado como jogador. '+(published?'Ficha oficial disponível.':'Aguardando publicação.'));}catch(e){status('Falha na conexão: '+e.message);}});}catch(e){status('SDK indisponível. Modo local.');}})();}
-window.addEventListener('pagehide',()=>{if(ready)void flush();});
+// Inicialização e diagnóstico da conexão
+migrate();
+persistModel();
+renderClassic(true);
+draw();
+publicationUI();
+
+async function conectarSala() {
+  if (window.parent === window) {
+    status('Modo local de teste.');
+    receivePublication(read('rpg-test-publication', null));
+    return;
+  }
+
+  status('Carregando SDK do Owlbear...');
+
+  try {
+    OBR = (await import('https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm')).default;
+
+    status('SDK carregado. Aguardando sala...');
+
+    const timeout = setTimeout(() => {
+      if (!ready) status('SDK carregado, mas a sala não respondeu.');
+    }, 10000);
+
+    OBR.onReady(async () => {
+      clearTimeout(timeout);
+
+      try {
+        status('Conectando à sala...');
+        metadata = await OBR.room.getMetadata();
+        role = await OBR.player.getRole();
+        ready = true;
+
+        publicationUI();
+
+        if (role !== 'GM') {
+          $('visual').hidden = false;
+          $('classic').hidden = true;
+          $('editor').hidden = true;
+          editing = false;
+          model = {version:3,image:'',fields:[]};
+          draw();
+        }
+
+        receivePublication(metadata[publicationKey]);
+
+        OBR.room.onMetadataChange(m => {
+          metadata = {...m,...inFlight,...Object.fromEntries(pending)};
+          renderClassic();
+          refreshValues();
+          receivePublication(m[publicationKey]);
+        });
+
+        if (role === 'GM') migrate();
+
+        renderClassic(true);
+        refreshValues();
+
+        status(role === 'GM'
+          ? 'Conectado como mestre.'
+          : 'Conectado como jogador.');
+
+      } catch (e) {
+        status('Erro na sala: ' + e.message);
+        console.error(e);
+      }
+    });
+
+  } catch (e) {
+    status('Erro no SDK: ' + e.message);
+    console.error(e);
+  }
+}
+
+conectarSala();
+
+window.addEventListener('pagehide', () => {
+  if (ready) void flush();
+});

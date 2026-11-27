@@ -1,15 +1,1 @@
-{
-  "name": "One Piece RPG - Editor Visual",
-  "version": "3.3.0",
-  "manifest_version": 1,
-  "description": "Editor de modelos visuais e publicação de fichas RPG",
-  "author": "One Piece RPG",
-  "icon": "https://borbaberetae-pixel.github.io/one-piece-rpg/icon.svg",
-  "action": {
-    "title": "Editor Visual RPG",
-    "icon": "https://borbaberetae-pixel.github.io/one-piece-rpg/icon.svg",
-    "popover": "https://borbaberetae-pixel.github.io/one-piece-editor/index.html?v=33",
-    "height": 650,
-    "width": 800
-  }
-}
+{"name": "One Piece Combat", "version": "1.0.4", "manifest_version": 1, "author": "Borba", "description": "Combate e intera\u00e7\u00e3o RPG", "icon": "/one-piece-combat/icon.svg", "action": {"title": "One Piece Combat", "icon": "/one-piece-combat/icon.svg", "popover": "/one-piece-combat/index.html", "height": 650, "width": 400}}

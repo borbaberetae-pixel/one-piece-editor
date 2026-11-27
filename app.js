@@ -1,4 +1,5 @@
-import SDK from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';// Editor visual v3.3 — modelo, dados e imagens separados.
+import SDK from 'https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk@3.1.0/+esm';
+// Editor visual v3.3 — modelo, dados e imagens separados.
 const $=id=>document.getElementById(id);
 const prefix='one-piece-rpg.fichas/';
 const groups=[['Identidade',['Nome','Idade','Raça','Classe','Subclasse','Nível','XP','Berries','Recompensa']],['Status',['Vida atual','Vida máxima','Mana atual','Mana máxima','Defesa','Movimentação']],['Atributos',['Força','Destreza','Constituição','Inteligência','Sabedoria','Carisma']],['Habilidades e itens',['Perícias','Habilidades raciais','Habilidades de classe','Akuma no Mi','Haki','Armas','Equipamentos','Inventário','Anotações']]];
@@ -11,7 +12,7 @@ const valueStore='rpg-test-values', modelStore='rpg-test-model', artStore='rpg-t
 let metadata=read(valueStore,{}), art=read(artStore,{}), model=read(modelStore,{image:'',fields:[]});
 let OBR,ready=false,editing=true,selected=null,activeSlot=slot();
 const inputs=new Map(), pending=new Map();let timer, sending=false, inFlight={};
-const kinds=['text','number','area','card','counter'];
+const kinds=['text','number','area','card','counter','skills','bar'];
 const rarities={'Comum':'#a5a5b0','Incomum':'#65c68a','Raro':'#66aaff','Épico':'#b68cff','Lendário':'#e7c17b','Mítico':'#f18b8b'};
 const categories=['Outro','Consumível','Arma','Equipamento','Acessório','Material','Tesouro','Item especial','Missão'];
 const cardDefaults={name:'',qty:'1',rarity:'Comum',category:'Outro',desc:''};
@@ -25,17 +26,18 @@ const counterOf=f=>normalizeCounter(f.counter);
 const fieldKey=f=>'visual/'+f.id;
 const cardKey=(f,p)=>fieldKey(f)+'/card/'+p;
 const hostedImage='https://borbaberetae-pixel.github.io/one-piece-editor/a_highly_detailed_clean_graphic_design_of_a_blank_1.png';
-const imageOK=v=>typeof v==='string'&&(v===hostedImage||/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v));
+const imageOK=v=>v===hostedImage||typeof v==='string'&&/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(v);
 const uid=()=>crypto.randomUUID();
 function normalizeModel(m){
  if(!m||!Array.isArray(m.fields)||!(m.image===''||imageOK(m.image)))throw Error('Modelo inválido');
  const ids=new Set();
- const fields=m.fields.map(f=>{if(!f||typeof f.id!=='string'||!f.id||typeof f.name!=='string'||!kinds.includes(f.kind)||!['x','y','w','h'].every(k=>Number.isFinite(f[k])))throw Error('Campo inválido');if(ids.has(f.id))throw Error('IDs duplicados no modelo');ids.add(f.id);const w=Math.max(4,Math.min(100,f.w)),h=Math.max(3,Math.min(100,f.h));return {id:f.id,name:f.name,kind:f.kind,x:Math.max(0,Math.min(100-w,f.x)),y:Math.max(0,Math.min(100-h,f.y)),w,h,style:f.style&&typeof f.style==='object'?f.style:{},...(f.kind==='counter'?{counter:normalizeCounter(f.counter)}:{}),legacyName:typeof f.legacyName==='string'?f.legacyName:(!m.version&&f.kind!=='card'?f.name:undefined)};});
+ const fields=m.fields.map(f=>{if(!f||typeof f.id!=='string'||!f.id||typeof f.name!=='string'||!kinds.includes(f.kind)||!['x','y','w','h'].every(k=>Number.isFinite(f[k])))throw Error('Campo inválido');if(ids.has(f.id))throw Error('IDs duplicados no modelo');ids.add(f.id);const w=Math.max(4,Math.min(100,f.w)),h=Math.max(3,Math.min(100,f.h));return {id:f.id,name:f.name,kind:f.kind,x:Math.max(0,Math.min(100-w,f.x)),y:Math.max(0,Math.min(100-h,f.y)),w,h,sync:typeof f.sync==='string'?f.sync:'',style:f.style&&typeof f.style==='object'?f.style:{},...(f.kind==='counter'?{counter:normalizeCounter(f.counter)}:{}),legacyName:typeof f.legacyName==='string'?f.legacyName:(!m.version&&f.kind!=='card'?f.name:undefined)};});
  return {version:3,image:m.image,fields};
 }
 try{model=normalizeModel(model);}catch{model={version:3,image:'',fields:[]};status('Modelo local inválido. Importe um backup.');}
 function persistModel(){if(officialView)return true;return store(modelStore,model);}
 function patchValues(patch,{immediate=false}={}){
+ if(ready&&role!=='GM'){patch=Object.fromEntries(Object.entries(patch).filter(([k])=>slots.some(s=>linked(s)?.owner===myId&&k.startsWith(prefix+s+'/'))));if(!Object.keys(patch).length)return;}
  Object.assign(metadata,patch);
  if(!ready){store(valueStore,metadata);return;}
  for(const [k,v] of Object.entries(patch))pending.set(k,v);
@@ -59,7 +61,7 @@ function commitFocus(){if(document.activeElement instanceof HTMLElement)document
 for(const [title,fields] of groups){const h=element('h3','',title);$('fields').append(h);const box=element('div',title!=='Habilidades e itens'?'grid':'');for(const field of fields){const label=element('label','',field);const el=element(title==='Habilidades e itens'?'textarea':'input');label.append(el);box.append(label);inputs.set(field,el);el.oninput=()=>save(activeSlot,field,el.value);el.onchange=()=>save(activeSlot,field,el.value,true);} $('fields').append(box);}
 function renderClassic(force=false){for(const [f,e] of inputs)if(force||e!==document.activeElement)e.value=value(activeSlot,f);}
 function styleOf(f){return {...(f.kind==='card'?cardStyle:f.kind==='counter'?counterStyle:defaults),...f.style};}
-function syncStyle(){const f=model.fields.find(f=>f.id===selected);$('stylepanel').hidden=!editing||!f;if(!f)return;const s=styleOf(f);for(const k of Object.keys(defaults))$('st'+k).value=s[k];$('rename').value=f.name;$('rarityStyle').hidden=f.kind!=='card';$('stRarity').checked=!!s.Rarity;$('counterSettings').hidden=f.kind!=='counter';if(f.kind==='counter'){const c=counterOf(f);$('ctMin').value=c.min??'';$('ctMax').value=c.max??'';$('ctStep').value=c.step;$('ctName').checked=c.showName;$('ctSigned').checked=c.signed;}}
+function syncStyle(){const f=model.fields.find(f=>f.id===selected);$('stylepanel').hidden=!editing||!f;if(!f)return;const s=styleOf(f);for(const k of Object.keys(defaults))$('st'+k).value=s[k];$('rename').value=f.name;$('syncField').value=f.sync||'';$('rarityStyle').hidden=f.kind!=='card';$('stRarity').checked=!!s.Rarity;$('counterSettings').hidden=f.kind!=='counter';if(f.kind==='counter'){const c=counterOf(f);$('ctMin').value=c.min??'';$('ctMax').value=c.max??'';$('ctStep').value=c.step;$('ctName').checked=c.showName;$('ctSigned').checked=c.signed;}}
 const hex=v=>/^#[0-9a-f]{6}$/i.test(v)?v:'#ffffff';
 const num=(v,a,b)=>Math.max(a,Math.min(b,Number(v)||0));
 function applyStyle(el,f){const s=styleOf(f),alpha=Math.round(num(s.Opacity,0,100)*255/100).toString(16).padStart(2,'0');Object.assign(el.style,{color:hex(s.Color),fontSize:num(s.Size,8,96)+'px',fontFamily:s.Font,textAlign:s.Align,fontWeight:s.Weight==='bold'?'bold':'normal',fontStyle:s.Weight==='italic'?'italic':'normal',backgroundColor:hex(s.Bg)+alpha,border:num(s.Border,0,2)+'px solid '+hex(s.BorderColor)});}
@@ -72,7 +74,7 @@ function refreshCard(box,f,s){
  const sel=box.querySelector('[data-card-prop="rarity"]');if(sel)sel.style.color=color;
  const src=cardImage(s,f),img=box.querySelector('img'),wrap=box.querySelector('.item-art');img.hidden=!src;if(src){if(img.getAttribute('src')!==src)img.src=src;}else img.removeAttribute('src');wrap.classList.toggle('has-art',!!src);wrap.querySelector('.art-placeholder').hidden=!!src;
 }
-function refreshValues(){for(const d of $('overlays').children){const f=model.fields.find(x=>x.id===d.dataset.id);if(!f)continue;if(f.kind==='card'){const box=d.querySelector('.itemcard');if(box)refreshCard(box,f,activeSlot);}else if(f.kind==='counter'){const box=d.querySelector('.counter');if(box)refreshCounter(box,f,activeSlot);}else{const e=d.querySelector('.field-value');if(e&&e!==document.activeElement)e.value=value(activeSlot,fieldKey(f))||(editing?f.name:'');}}}
+function refreshValues(){for(const d of $('overlays').children){const f=model.fields.find(x=>x.id===d.dataset.id);if(!f)continue;if(['skills','bar'].includes(f.kind)){const box=d.querySelector('.sync-widget');if(box)refreshWidget(box,f,activeSlot);}else if(f.kind==='card'){const box=d.querySelector('.itemcard');if(box)refreshCard(box,f,activeSlot);}else if(f.kind==='counter'){const box=d.querySelector('.counter');if(box)refreshCounter(box,f,activeSlot);}else{const e=d.querySelector('.field-value');if(e&&e!==document.activeElement)e.value=value(activeSlot,fieldKey(f))||(editing?f.name:'');}}}
 function changeStyle(k,v){const f=model.fields.find(f=>f.id===selected);if(!f)return;f.style={...styleOf(f),[k]:v};persistModel();const d=[...$('overlays').children].find(x=>x.dataset.id===f.id),e=d?.querySelector('.field-value,.itemcard,.counter');if(e){applyStyle(e,f);if(f.kind==='card')refreshCard(e,f,activeSlot);}}
 for(const k of Object.keys(defaults))$('st'+k).oninput=()=>changeStyle(k,$('st'+k).value);
 $('stRarity').onchange=()=>changeStyle('Rarity',$('stRarity').checked);
@@ -106,11 +108,17 @@ function makeCounter(f,s,preview){const c=counterOf(f),box=element('div','counte
  function commit(){const n=safeInt(input.value);if(n!==null)save(s,fieldKey(f),String(clampCounter(n,c)),true);refreshCounter(box,f,s,true);}
  if(!preview){input.oninput=()=>{const n=safeInt(input.value);if(n!==null&&n===clampCounter(n,c)){save(s,fieldKey(f),String(n));refreshCounter(box,f,s);}};input.onblur=commit;input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();input.blur();}};const adjust=delta=>{const n=counterValue(s,f),next=clampCounter(n+delta*c.step,c);save(s,fieldKey(f),String(next),true);refreshCounter(box,f,s,true);};minus.onclick=()=>adjust(-1);plus.onclick=()=>adjust(1);}
  row.append(minus,input,plus);refreshCounter(box,f,s,true);return box;}
+const combatKey='one-piece-combat/state/v1';
+function linked(s){return Object.values(metadata[combatKey]?.units||{}).find(u=>u.team==='player'&&u.editorSlot===s);}
+function updateBinding(){const allowed=slots.filter(s=>role==='GM'||linked(s)?.owner===myId);for(const o of $('sheet').options)o.disabled=!allowed.includes(o.value);$('binding').textContent=allowed.length?(linked(activeSlot)?.name?'Token: '+linked(activeSlot).name:'Sem token vinculado'):'Nenhuma ficha vinculada ao seu jogador';if(allowed.length&&!allowed.includes(activeSlot)){$('sheet').value=allowed[0];activeSlot=allowed[0];draw();} $('visual').style.display=allowed.length?'':'none';$('classic').style.display=allowed.length?'':'none';}
+function makeWidget(f,s){const b=element('div','sync-widget');applyStyle(b,f);refreshWidget(b,f,s);return b;}
+function refreshWidget(b,f,s){const u=linked(s);const signature=JSON.stringify([f.kind,f.sync,u?.skills,u?.[f.sync],u?.[{hp:'maxHp',sta:'maxSta',haki:'maxHaki'}[f.sync]]]);if(b.dataset.signature===signature)return;b.dataset.signature=signature;b.replaceChildren();if(f.kind==='skills'){const d=element('details');d.append(element('summary','','Habilidades ('+(u?.skills?.length||0)+')'));for(const k of u?.skills||[]){const item=element('details');item.append(element('summary','',k.name),element('div','',(k.groups||[]).map(g=>g.q+'d'+g.d).join(' + ')+' | Mod: '+(k.bonus||0)+' | STA: '+(k.cost||0)+' | Haki: '+(k.haki||0)),element('div','',k.effect||''));d.append(item);}b.append(d);}else{const max={hp:'maxHp',sta:'maxSta',haki:'maxHaki'}[f.sync];b.append(element('div','',f.name+': '+(u?.[f.sync]??'—')+(max?'/'+(u?.[max]??'—'):'')));if(max&&u){const p=element('progress');p.max=u[max]||1;p.value=u[f.sync]||0;b.append(p);}}}
+$('syncField').onchange=()=>{const f=model.fields.find(f=>f.id===selected);if(f){f.sync=$('syncField').value;persistModel();draw();}};
 function draw(){
  syncStyle();const bg=$('bg');bg.hidden=!model.image;if(model.image&&bg.getAttribute('src')!==model.image)bg.src=model.image;else if(!model.image)bg.removeAttribute('src');$('overlays').replaceChildren();if(!model.image)return;
  const s=activeSlot;
  for(const f of model.fields){const d=element('div','overlay'+(editing?' edit':'')+(editing&&selected===f.id?' selected':''));d.dataset.id=f.id;const place=()=>Object.assign(d.style,{left:f.x+'%',top:f.y+'%',width:f.w+'%',height:f.h+'%'});place();
- if(f.kind==='card')d.append(makeCard(f,s,editing));else if(f.kind==='counter')d.append(makeCounter(f,s,editing));else{const e=element(f.kind==='area'?'textarea':'input','field-value');if(f.kind==='number'&&!editing){e.type='number';e.step='any';}e.setAttribute('aria-label',f.name);e.value=value(s,fieldKey(f))||(editing?f.name:'');e.readOnly=editing;if(editing)e.tabIndex=-1;else{e.oninput=()=>save(s,fieldKey(f),e.value);e.onchange=()=>save(s,fieldKey(f),e.value,true);}applyStyle(e,f);d.append(e);}
+ if(['skills','bar'].includes(f.kind))d.append(makeWidget(f,s));else if(f.kind==='card')d.append(makeCard(f,s,editing));else if(f.kind==='counter')d.append(makeCounter(f,s,editing));else{const e=element(f.kind==='area'?'textarea':'input','field-value');if(f.kind==='number'&&!editing){e.type='number';e.step='any';}e.setAttribute('aria-label',f.name);e.value=value(s,fieldKey(f))||(editing?f.name:'');e.readOnly=editing;if(editing)e.tabIndex=-1;else{e.oninput=()=>save(s,fieldKey(f),e.value);e.onchange=()=>save(s,fieldKey(f),e.value,true);}applyStyle(e,f);d.append(e);}
  if(editing){d.append(element('span','edit-label',f.name));const handle=element('div','handle');d.append(handle);d.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();selected=f.id;syncStyle();for(const n of $('overlays').children)n.classList.toggle('selected',n===d);const r=$('stage').getBoundingClientRect(),sx=e.clientX,sy=e.clientY,orig={...f},resize=e.target===handle;if(!r.width||!r.height)return;d.setPointerCapture(e.pointerId);d.onpointermove=m=>{const dx=(m.clientX-sx)/r.width*100,dy=(m.clientY-sy)/r.height*100;if(resize){f.w=Math.max(4,Math.min(100-f.x,orig.w+dx));f.h=Math.max(3,Math.min(100-f.y,orig.h+dy));}else{f.x=Math.max(0,Math.min(100-f.w,orig.x+dx));f.y=Math.max(0,Math.min(100-f.h,orig.y+dy));}place();};d.onpointerup=d.onpointercancel=()=>{d.onpointermove=null;persistModel();};};}
  $('overlays').append(d);
  }
@@ -129,6 +137,7 @@ $('backupExport').onclick=()=>{commitFocus();const values=Object.fromEntries(Obj
 $('backupImport').onclick=()=>$('backupFile').click();$('backupFile').onchange=async()=>{const f=$('backupFile').files[0];$('backupFile').value='';if(!f)return;try{const b=JSON.parse(await f.text());if(b.format!=='one-piece-editor-backup')throw Error('Arquivo não é um backup completo');const m=normalizeModel(b.model),p={},a={};for(const [k,v] of Object.entries(b.values||{}))if(k.startsWith(prefix)&&['string','number'].includes(typeof v))p[k]=String(v);for(const [k,v] of Object.entries(b.art||{}))if(k.startsWith(prefix)&&imageOK(v))a[k]=v;if(!confirm('Restaurar layout e os dados das duas fichas deste backup? Valores correspondentes serão substituídos.'))return;model=m;selected=null;Object.assign(art,a);store(artStore,art);patchValues(p,{immediate:true});migrate();persistModel();renderClassic(true);draw();status('Backup restaurado.');}catch(e){status('Falha: '+e.message);}};
 // Publicação experimental: um único registro, separado dos valores.
 const publicationKey='one-piece-editor.publication/v1';
+let myId="";
 let officialView=false, draftModel=null, published=null, role=null, publicationRevision=null;
 function publicationUI(){
  $('publish').disabled=officialView||(ready&&role!=='GM');
@@ -162,82 +171,7 @@ $('publish').onclick=async()=>{
 };
 $('official').onclick=showOfficial;
 $('draft').onclick=()=>{if(ready&&role!=='GM')return;commitFocus();model=draftModel;draftModel=null;officialView=false;editing=true;selected=null;$('editor').hidden=false;$('mode').textContent='Modo jogador';publicationUI();draw();status('Rascunho aberto.');};
-// Inicialização e diagnóstico da conexão
-migrate();
-persistModel();
-renderClassic(true);
-draw();
-publicationUI();
-
-async function conectarSala() {
-  if (window.parent === window) {
-    status('Modo local de teste.');
-    receivePublication(read('rpg-test-publication', null));
-    return;
-  }
-
-  status('Carregando SDK do Owlbear...');
-
-  try {
- OBR = SDK;
-    status('SDK carregado. Aguardando sala...');
-
-    const timeout = setTimeout(() => {
-      if (!ready) status('SDK carregado, mas a sala não respondeu.');
-    }, 10000);
-
-    OBR.onReady(async () => {
-      clearTimeout(timeout);
-
-      try {
-        status('Conectando à sala...');
-        metadata = await OBR.room.getMetadata();
-        role = await OBR.player.getRole();
-        ready = true;
-
-        publicationUI();
-
-        if (role !== 'GM') {
-          $('visual').hidden = false;
-          $('classic').hidden = true;
-          $('editor').hidden = true;
-          editing = false;
-          model = {version:3,image:'',fields:[]};
-          draw();
-        }
-
-        receivePublication(metadata[publicationKey]);
-
-        OBR.room.onMetadataChange(m => {
-          metadata = {...m,...inFlight,...Object.fromEntries(pending)};
-          renderClassic();
-          refreshValues();
-          receivePublication(m[publicationKey]);
-        });
-
-        if (role === 'GM') migrate();
-
-        renderClassic(true);
-        refreshValues();
-
-        status(role === 'GM'
-          ? 'Conectado como mestre.'
-          : 'Conectado como jogador.');
-
-      } catch (e) {
-        status('Erro na sala: ' + e.message);
-        console.error(e);
-      }
-    });
-
-  } catch (e) {
-    status('Erro no SDK: ' + e.message);
-    console.error(e);
-  }
-}
-
-conectarSala();
-
-window.addEventListener('pagehide', () => {
-  if (ready) void flush();
-});
+// Inicialização local não depende da rede. O SDK só é carregado dentro de iframe.
+migrate();persistModel();renderClassic(true);draw();publicationUI();if(window.parent===window)receivePublication(read('rpg-test-publication',null));
+if(window.parent!==window){(async()=>{try{OBR=SDK;OBR.onReady(async()=>{try{metadata=await OBR.room.getMetadata();role=await OBR.player.getRole();myId=await OBR.player.getId();ready=true;updateBinding();publicationUI();if(role!=='GM'){$('visual').hidden=false;$('classic').hidden=true;$('editor').hidden=true;editing=false;model={version:3,image:'',fields:[]};draw();}receivePublication(metadata[publicationKey]);OBR.room.onMetadataChange(m=>{metadata={...m,...inFlight,...Object.fromEntries(pending)};updateBinding();renderClassic();refreshValues();receivePublication(m[publicationKey]);});if(role==='GM')migrate();renderClassic(true);refreshValues();status(role==='GM'?'Conectado como mestre.':'Conectado como jogador. '+(published?'Ficha oficial disponível.':'Aguardando publicação.'));}catch(e){status('Falha na conexão: '+e.message);}});}catch(e){status('SDK indisponível. Modo local.');}})();}
+window.addEventListener('pagehide',()=>{if(ready)void flush();});

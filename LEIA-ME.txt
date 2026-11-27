@@ -1,0 +1,1 @@
+Etapa experimental: leitura de vínculos, habilidades e barras do Combat v1.0.3. Não escreve atributos no Combat. Preserve manifest e imagem existentes. Exporte backup antes de atualizar.

@@ -1,1 +1,1 @@
-Etapa experimental: leitura de vínculos, habilidades e barras do Combat v1.0.3. Não escreve atributos no Combat. Preserve manifest e imagem existentes. Exporte backup antes de atualizar.
+Editor independente baseado no v3.3. Ambas as fichas editáveis pelos jogadores após publicação do modelo pelo mestre. Não depende do Combat. Publicação usa a imagem original hospedada. Faça backup antes de atualizar.

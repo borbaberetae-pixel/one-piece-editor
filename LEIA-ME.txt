@@ -1,3 +1,1 @@
-v1.0.2: retorno à exploração e reinício com restauração de recursos. Combates anteriores sem snapshot permitem somente retorno. Editor ainda não sincronizado.
-
-1.0.4: transferência automática de vínculo na exploração.
+Etapa experimental: leitura de vínculos, habilidades e barras do Combat v1.0.3. Não escreve atributos no Combat. Preserve manifest e imagem existentes. Exporte backup antes de atualizar.
